@@ -1,0 +1,128 @@
+#!/bin/sh
+
+# Set up variables
+ARCH="$(uname -m)"
+KAWAII_REPO='/home/angel/Projects/kpip'
+KAWAII_DIR="$KAWAII_REPO/$ARCH"
+
+# Function to show help message
+show_help() {
+    echo "Usage: kpip [OPTION] [ARGUMENTS]"
+    echo ""
+    echo "Options:"
+    echo "  -d, --download   Download packages to the Kawaii directory."
+    echo "  -i, --install    Install packages from the Kawaii directory to the virtual environment."
+    echo "  -s, --sync       Sync and update all packages in the Kawaii directory if an internet connection is available."
+    echo "  -u, --update     Update the virtual environment and upgrade packages in the Kawaii directory."
+    echo "  -h, --help       Show this help message."
+    echo ""
+    echo "Arguments:"
+    echo "  [package(s)]     Specify package names for download or install options."
+}
+
+# Function to download packages
+download_packages() {
+    update_list=$1
+    shift
+
+    if [ -d "$KAWAII_DIR" ]; then
+        echo "Downloading packages to ${KAWAII_DIR}"
+    else
+        echo "Directory ${KAWAII_DIR} does not exist, creating it now."
+        mkdir -p "$KAWAII_DIR"
+    fi
+
+    pip download --timeout 120 -d "$KAWAII_DIR" $@
+
+    if [ "$update_list" = "true" ]; then
+        # Verify if download was successful for each package
+        for package in "$@"; do
+            package_name=$(echo "$package" | sed -e 's/[^a-zA-Z0-9_-]//g')
+            if ls "$KAWAII_DIR"/*"$package_name"* >/dev/null 2>&1; then
+                echo "$package" >> "$KAWAII_REPO/install.txt"
+                echo "$package downloaded successfully and added to install.txt."
+            else
+                echo "Failed to download $package. Not adding to install.txt."
+            fi
+        done
+    fi
+}
+
+# Function to install packages
+install_packages() {
+    if [ -d "$KAWAII_DIR" ]; then
+        echo "Installing packages to the virtual environment."
+        pip install --no-index --find-links="$KAWAII_DIR" "$@"
+    else
+        echo "Error: Kawaii directory ${KAWAII_DIR} does not exist."
+        exit 1
+    fi
+}
+
+# Function to sync packages
+sync_packages() {
+    SERVER="8.8.8.8"
+    if ping -c 1 "$SERVER" > /dev/null 2>&1; then
+        echo "Connected to the internet!"
+    else
+        echo "No internet connection."
+        return 1
+    fi
+
+    packages=$(tr '\n' ' ' < "$KAWAII_REPO/install.txt" | sed 's/ *$//')
+
+    echo "Warning: This will delete all .whl files in $KAWAII_DIR."
+    echo "Are you sure you want to proceed? (Y/n)"
+    read -r confirmation
+
+    if [ "$confirmation" = "y" ] || [ "$confirmation" = "Y" ]; then
+        if ls "$KAWAII_DIR"/*.whl >/dev/null 2>&1; then
+            # Execute the delete command
+            rm "$KAWAII_DIR"/*.whl
+            echo "Files deleted."
+        else
+            echo "No .whl files found to delete."
+        fi
+    else
+        echo "Operation canceled."
+        return 1
+    fi
+
+    download_packages "false" "$packages"
+}
+
+# Function to update packages
+update_packages() {
+    sync_packages
+    if [ -d "$KAWAII_DIR" ]; then
+        echo "Upgrading packages"
+        pip install --upgrade --no-index --find-links="$KAWAII_DIR" $(ls "$KAWAII_DIR"/*.whl | xargs -n 1 pip show | grep -E '^Name:' | awk '{print $2}')
+    else
+        echo "Error: Kawaii directory ${KAWAII_DIR} does not exist."
+        exit 1
+    fi
+}
+
+# Main logic to handle user arguments
+case "$1" in
+    -d|--download)
+        shift
+        download_packages "true" "$@"
+        ;;
+    -i|--install)
+        shift
+        install_packages "$@"
+        ;;
+    -s|--sync)
+        sync_packages
+        ;;
+    -u|--update)
+        update_packages
+        ;;
+    -h|--help)
+        show_help
+        ;;
+    *)
+        show_help
+        ;;
+esac
