@@ -22,9 +22,6 @@ show_help() {
 
 # Function to download packages
 download_packages() {
-    update_list=$1
-    shift
-
     if [ -d "$KAWAII_DIR" ]; then
         echo "Downloading packages to ${KAWAII_DIR}"
     else
@@ -34,18 +31,13 @@ download_packages() {
 
     pip download --timeout 120 -d "$KAWAII_DIR" $@
 
-    if [ "$update_list" = "true" ]; then
-        # Verify if download was successful for each package
-        for package in "$@"; do
-            package_name=$(echo "$package" | sed -e 's/[^a-zA-Z0-9_-]//g')
-            if ls "$KAWAII_DIR"/*"$package_name"* >/dev/null 2>&1; then
-                echo "$package" >> "$KAWAII_REPO/install.txt"
-                echo "$package downloaded successfully and added to install.txt."
-            else
-                echo "Failed to download $package. Not adding to install.txt."
-            fi
-        done
-    fi
+    for package in "$@"; do
+        echo "$package" >> "$KAWAII_REPO/install.txt"
+    done
+
+    # Sort and remove duplicates, then write to a temporary file and move it back
+    sort "$KAWAII_REPO/install.txt" | uniq > "$KAWAII_REPO/install_temp.txt"
+    mv "$KAWAII_REPO/install_temp.txt" "$KAWAII_REPO/install.txt"
 }
 
 # Function to install packages
@@ -88,7 +80,7 @@ sync_packages() {
         return 1
     fi
 
-    download_packages "false" "$packages"
+    download_packages "$packages"
 }
 
 # Function to update packages

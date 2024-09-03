@@ -36,5 +36,4 @@ rich
 typer
 pendulum
 kaleido
-kaleido
 psutil
